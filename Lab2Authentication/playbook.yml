@@ -1,0 +1,49 @@
+- name: Promethius installer
+  hosts: myhosts
+  remote_user: root
+  tasks:
+    - name: Setup Prometheus on remote
+      script: install.sh
+      register: outData
+    - debug: msg="{{ outData.stdout }}"
+    - debug: msg="{{ outData.stderr }}" 
+- name: Run local script
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Execute script
+      shell: 
+         cmd: |
+             sed -i '/  - job_name: "nodes"/a\ \ \ \ basic_auth:\n     username: prometheus\n     password: DevOps' /etc/prometheus/prometheus.yml
+             systemctl restart prometheus
+      register: "output"
+    - debug: var=output.stdout_lines
+- name: Promethius setup TLS
+  hosts: myhosts
+  remote_user: root
+  tasks:
+    - name: Promethius setup TLS
+      script: setupTLS.sh
+      register: outData
+    - debug: msg="{{ outData.stdout }}"
+    - debug: msg="{{ outData.stderr }}" 
+    - name: Cpoy SSL to local
+      fetch:
+        flat: true
+        src: /etc/node_exporter/node_exporter.crt
+        dest: /etc/prometheus/node_exporter.crt
+
+- name: Run local script
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: change ownership of cert
+      shell: 
+         cmd: |
+             chown prometheus.prometheus /etc/prometheus/node_exporter.crt
+             sed -i '/  - job_name: "nodes"/a\ \ \ \ scheme: https\n    tls_config:\n     ca_file: /etc/prometheus/node_exporter.crt\n     insecure_skip_verify: true' /etc/prometheus/prometheus.yml
+             systemctl restart prometheus
+      register: "output"
+    - debug: var=output.stdout_lines
+
+
